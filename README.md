@@ -23,6 +23,11 @@ Physics sandboxes are often either opaque demos or intimidating engineering tool
 - Start from five different experiments: Silk drop, Moon relay, Crosswind, Tear study, and Heavy impact.
 - Pause, reset, clear objects, or use keyboard shortcuts without leaving the field.
 - Read live telemetry for FPS, node count, active springs, energy index, tears, and contacts.
+- Launch an impact volley that drops three bodies with different trajectories.
+- Capture up to five run snapshots, review observations in the archive, keep them across refreshes, and export a JSON lab log.
+- Use focus mode to expand the field, with the active experiment carried through responsive resizes.
+- Toggle a live **3D depth projection** (`D`) that turns cloth folds, objects, contacts, and the constraint lattice into a perspective relief without changing the stable 2D solver.
+- Let the lab auto-pause when its browser tab is hidden to avoid wasting work in the background.
 
 ## Controls
 
@@ -34,9 +39,15 @@ Physics sandboxes are often either opaque demos or intimidating engineering tool
 | `O` | Choose an object and click to drop it |
 | `Space` | Pause or resume the simulation |
 | `R` | Reset the current experiment |
+| `F` | Toggle the expanded focus field |
+| `D` | Toggle the 3D depth projection |
 | `1`–`5` | Load a scenario preset |
 
 The same actions are available through the tool panel and transport bar, so the lab is usable with a mouse, touch pointer, or keyboard.
+
+## Devlog
+
+The build diary lives in [`docs/devlog.md`](docs/devlog.md). It records the design decisions, experiments, and verification passes behind the laboratory rather than treating the final screenshot as the whole story.
 
 ## How the physics works
 

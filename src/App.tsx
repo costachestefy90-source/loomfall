@@ -65,6 +65,19 @@ type Telemetry = {
   tears: number
 }
 
+type RunNote = {
+  id: number
+  capturedAt: string
+  preset: string
+  energy: number
+  tears: number
+  contacts: number
+  objects: number
+  observation: string
+}
+
+const RUN_NOTES_STORAGE_KEY = 'loomfall.run-notes'
+
 const DEFAULT_PARAMS: SimulationParams = {
   gravity: 0.92,
   stiffness: 0.86,
@@ -164,6 +177,44 @@ const edgeKey = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`)
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
+function describeRun(telemetry: Telemetry, objectCount: number) {
+  if (telemetry.tears > 0) return `${telemetry.tears} spring${telemetry.tears === 1 ? '' : 's'} broken; inspect the new edge.`
+  if (telemetry.contacts > 0) return `${telemetry.contacts} active contact${telemetry.contacts === 1 ? '' : 's'}; watch the fold recover.`
+  if (objectCount > 0) return `${objectCount} object${objectCount === 1 ? '' : 's'} in play; compare the rebound.`
+  return 'Quiet mesh; change one parameter and capture again.'
+}
+
+function projectPoint(point: Point, cloth: Cloth, depthView: boolean) {
+  if (!depthView) return { x: point.x, y: point.y }
+  const planeDepth = ((point.homeY - 68) / Math.max(cloth.height, 1) - 0.5) * 34
+  const foldDepth = clamp((point.y - point.homeY) * 0.72, -48, 48)
+  const depth = planeDepth + foldDepth
+  return { x: point.x + depth * 0.52, y: point.y - depth * 0.3 }
+}
+
+function projectPosition(x: number, y: number, engine: Engine, depthView: boolean) {
+  if (!depthView) return { x, y }
+  const planeDepth = ((y - 68) / Math.max(engine.cloth.height, 1) - 0.5) * 24
+  return { x: x + planeDepth * 0.52, y: y - planeDepth * 0.3 }
+}
+
+function readStoredRunNotes(): RunNote[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const stored = window.localStorage.getItem(RUN_NOTES_STORAGE_KEY)
+    if (!stored) return []
+    const parsed: unknown = JSON.parse(stored)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is RunNote => {
+      if (!item || typeof item !== 'object') return false
+      const candidate = item as Record<string, unknown>
+      return typeof candidate.id === 'number' && typeof candidate.capturedAt === 'string' && typeof candidate.preset === 'string' && typeof candidate.energy === 'number' && typeof candidate.tears === 'number' && typeof candidate.contacts === 'number' && typeof candidate.objects === 'number' && typeof candidate.observation === 'string'
+    }).slice(0, 5)
+  } catch {
+    return []
+  }
+}
+
 function makeObject(seed: ObjectSeed, id: number, clothWidth: number, floorY: number): SimObject {
   const size = seed.size ?? (seed.kind === 'ball' ? 25 : 27)
   return {
@@ -218,8 +269,9 @@ function drawStar(ctx: CanvasRenderingContext2D, radius: number) {
   ctx.closePath()
 }
 
-function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, stressView: boolean) {
+function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, stressView: boolean, depthView: boolean) {
   const { width, height, cloth } = engine
+  const project = (point: Point) => projectPoint(point, cloth, depthView)
   ctx.clearRect(0, 0, width, height)
 
   const background = ctx.createLinearGradient(0, 0, width, height)
@@ -281,11 +333,15 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
         const b = cloth.points[bIndex]
         const c = cloth.points[cIndex]
         const d = cloth.points[dIndex]
+        const projectedA = project(a)
+        const projectedB = project(b)
+        const projectedC = project(c)
+        const projectedD = project(d)
         ctx.beginPath()
-        ctx.moveTo(a.x, a.y)
-        ctx.lineTo(b.x, b.y)
-        ctx.lineTo(d.x, d.y)
-        ctx.lineTo(c.x, c.y)
+        ctx.moveTo(projectedA.x, projectedA.y)
+        ctx.lineTo(projectedB.x, projectedB.y)
+        ctx.lineTo(projectedD.x, projectedD.y)
+        ctx.lineTo(projectedC.x, projectedC.y)
         ctx.closePath()
         ctx.fill()
       }
@@ -304,10 +360,12 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
       if (!constraint.active || constraint.kind === 'bend') continue
       const a = cloth.points[constraint.a]
       const b = cloth.points[constraint.b]
+      const projectedA = project(a)
+      const projectedB = project(b)
       const ratio = Math.hypot(b.x - a.x, b.y - a.y) / constraint.rest
       ctx.beginPath()
-      ctx.moveTo(a.x, a.y)
-      ctx.lineTo(b.x, b.y)
+      ctx.moveTo(projectedA.x, projectedA.y)
+      ctx.lineTo(projectedB.x, projectedB.y)
       ctx.strokeStyle = ratio > 1.18 ? 'rgba(255, 114, 132, 0.86)' : ratio > 1.04 ? 'rgba(246, 200, 95, 0.76)' : constraint.kind === 'shear' ? 'rgba(255, 238, 189, 0.22)' : 'rgba(255, 230, 172, 0.54)'
       ctx.lineWidth = ratio > 1.18 ? 2.6 : ratio > 1.04 ? 1.8 : constraint.kind === 'shear' ? 0.7 : 1.05
       ctx.stroke()
@@ -320,8 +378,10 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
       if (!constraint.active || constraint.kind !== 'structural') continue
       const a = cloth.points[constraint.a]
       const b = cloth.points[constraint.b]
-      ctx.moveTo(a.x, a.y)
-      ctx.lineTo(b.x, b.y)
+      const projectedA = project(a)
+      const projectedB = project(b)
+      ctx.moveTo(projectedA.x, projectedA.y)
+      ctx.lineTo(projectedB.x, projectedB.y)
     }
     ctx.strokeStyle = 'rgba(255, 230, 172, 0.54)'
     ctx.lineWidth = 1.05
@@ -331,8 +391,10 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
       if (!constraint.active || constraint.kind !== 'shear') continue
       const a = cloth.points[constraint.a]
       const b = cloth.points[constraint.b]
-      ctx.moveTo(a.x, a.y)
-      ctx.lineTo(b.x, b.y)
+      const projectedA = project(a)
+      const projectedB = project(b)
+      ctx.moveTo(projectedA.x, projectedA.y)
+      ctx.lineTo(projectedB.x, projectedB.y)
     }
     ctx.strokeStyle = 'rgba(255, 238, 189, 0.22)'
     ctx.lineWidth = 0.7
@@ -349,25 +411,26 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
   })
   ctx.save()
   for (const [index, point] of cloth.points.entries()) {
+    const projected = project(point)
     if (point.pinned) {
       ctx.fillStyle = '#ffd77a'
       ctx.shadowColor = 'rgba(255, 215, 122, 0.68)'
       ctx.shadowBlur = 10
       ctx.beginPath()
-      ctx.arc(point.x, point.y, 4.8, 0, Math.PI * 2)
+      ctx.arc(projected.x, projected.y, 4.8, 0, Math.PI * 2)
       ctx.fill()
       ctx.shadowBlur = 0
     } else if (stressView || index === engine.hoverPoint) {
       ctx.fillStyle = index === engine.hoverPoint ? '#ffffff' : 'rgba(246, 200, 95, 0.78)'
       ctx.beginPath()
-      ctx.arc(point.x, point.y, index === engine.hoverPoint ? 3.1 : 1.7, 0, Math.PI * 2)
+      ctx.arc(projected.x, projected.y, index === engine.hoverPoint ? 3.1 : 1.7, 0, Math.PI * 2)
       ctx.fill()
     }
     if (brokenPoints.has(index)) {
       ctx.strokeStyle = 'rgba(255, 113, 132, 0.8)'
       ctx.lineWidth = 1.3
       ctx.beginPath()
-      ctx.arc(point.x, point.y, 5.5, 0, Math.PI * 2)
+      ctx.arc(projected.x, projected.y, 5.5, 0, Math.PI * 2)
       ctx.stroke()
     }
   }
@@ -375,8 +438,9 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
 
   for (const object of engine.objects) {
     const radius = objectRadius(object)
+    const projected = projectPosition(object.x, object.y, engine, depthView)
     ctx.save()
-    ctx.translate(object.x, object.y)
+    ctx.translate(projected.x, projected.y)
     ctx.rotate(object.angle)
     ctx.shadowColor = 'rgba(0, 0, 0, 0.45)'
     ctx.shadowBlur = 17
@@ -436,7 +500,7 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
       ctx.strokeStyle = `rgba(109, 225, 208, ${object.hitPulse * 0.55})`
       ctx.lineWidth = 2
       ctx.beginPath()
-      ctx.arc(object.x, object.y, radius + (1 - object.hitPulse) * 24, 0, Math.PI * 2)
+      ctx.arc(projected.x, projected.y, radius + (1 - object.hitPulse) * 24, 0, Math.PI * 2)
       ctx.stroke()
       ctx.restore()
     }
@@ -445,10 +509,11 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
   if (engine.contacts.length > 0) {
     ctx.save()
     for (const contact of engine.contacts) {
+      const projected = projectPosition(contact.x, contact.y, engine, depthView)
       ctx.strokeStyle = `rgba(109, 225, 208, ${Math.min(contact.strength * 0.38, 0.38)})`
       ctx.lineWidth = 1
       ctx.beginPath()
-      ctx.arc(contact.x, contact.y, 13 + contact.strength * 14, 0, Math.PI * 2)
+      ctx.arc(projected.x, projected.y, 13 + contact.strength * 14, 0, Math.PI * 2)
       ctx.stroke()
     }
     ctx.restore()
@@ -472,12 +537,13 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
 
   if (!engine.pointer.active && engine.hoverPoint >= 0 && tool !== 'object') {
     const point = cloth.points[engine.hoverPoint]
+    const projected = project(point)
     ctx.save()
     ctx.strokeStyle = tool === 'cut' ? 'rgba(255, 113, 132, 0.75)' : 'rgba(255, 255, 255, 0.7)'
     ctx.setLineDash([3, 4])
     ctx.lineWidth = 1
     ctx.beginPath()
-    ctx.arc(point.x, point.y, tool === 'cut' ? 15 : 11, 0, Math.PI * 2)
+    ctx.arc(projected.x, projected.y, tool === 'cut' ? 15 : 11, 0, Math.PI * 2)
     ctx.stroke()
     ctx.restore()
   }
@@ -486,8 +552,8 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
   ctx.fillStyle = 'rgba(231, 241, 246, 0.42)'
   ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace'
   ctx.letterSpacing = '1px'
-  ctx.fillText('FIELD 01  /  CLOTH', 24, 28)
-  ctx.fillText(`FLOOR  ${Math.round(cloth.floorY)}px`, width - 112, 28)
+  ctx.fillText(depthView ? 'FIELD 01  /  CLOTH  /  DEPTH' : 'FIELD 01  /  CLOTH', 24, 44)
+  ctx.fillText(`FLOOR  ${Math.round(cloth.floorY)}px`, width - 112, 44)
   ctx.restore()
 }
 
@@ -513,6 +579,10 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     case 'close': return <svg {...common}><path d="M6 6l12 12M18 6L6 18" /></svg>
     case 'chevron': return <svg {...common}><path d="M9 5l7 7-7 7" /></svg>
     case 'target': return <svg {...common}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>
+    case 'archive': return <svg {...common}><path d="M4 7h16v13H4zM3 4h18v3H3zM9 11h6M9 15h4" /></svg>
+    case 'download': return <svg {...common}><path d="M12 3v12M7 10l5 5 5-5M4 20h16" /></svg>
+    case 'focus': return <svg {...common}><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3M9 9h6v6H9z" /></svg>
+    case 'depth': return <svg {...common}><path d="M4 7l8-4 8 4-8 4-8-4zM4 12l8 4 8-4M4 17l8 4 8-4" /></svg>
     default: return <svg {...common}><circle cx="12" cy="12" r="8" /></svg>
   }
 }
@@ -583,11 +653,18 @@ export default function App() {
   const [objectKind, setObjectKind] = useState<ObjectKind>('ball')
   const [isRunning, setIsRunning] = useState(true)
   const [stressView, setStressView] = useState(false)
+  const [depthView, setDepthView] = useState(false)
+  const [focusMode, setFocusMode] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [toast, setToast] = useState('Silk drop loaded')
   const [telemetry, setTelemetry] = useState<Telemetry>({ fps: 60, nodes: 0, springs: 0, energy: 0, contacts: 0, tears: 0 })
+  const [energyHistory, setEnergyHistory] = useState<number[]>([])
+  const [runNotes, setRunNotes] = useState<RunNote[]>(readStoredRunNotes)
+  const [objectRevision, setObjectRevision] = useState(0)
   const toolRef = useRef<Tool>('grab')
   const stressViewRef = useRef(false)
+  const depthViewRef = useRef(false)
+  const nextNoteId = useRef(runNotes.reduce((highest, note) => Math.max(highest, note.id), 0) + 1)
 
   const currentPreset = useMemo(() => PRESETS.find((preset) => preset.id === presetRef.current) ?? PRESETS[0], [activePreset])
 
@@ -602,11 +679,14 @@ export default function App() {
   const loadPreset = useCallback((id: PresetId) => {
     const preset = PRESETS.find((candidate) => candidate.id === id) ?? PRESETS[0]
     const size = stageSize()
-    paramsRef.current = preset.params
+    const nextParams = { ...preset.params }
+    paramsRef.current = nextParams
     presetRef.current = preset.id
-    setParams(preset.params)
+    setParams(nextParams)
     setActivePreset(preset.id)
-    engineRef.current = createEngine(size.width, size.height, preset)
+    engineRef.current = createEngine(size.width, size.height, preset, nextParams)
+    setEnergyHistory([])
+    setObjectRevision((revision) => revision + 1)
     setToast(`${preset.name} loaded`)
   }, [stageSize])
 
@@ -614,12 +694,15 @@ export default function App() {
     const preset = PRESETS.find((candidate) => candidate.id === presetRef.current) ?? PRESETS[0]
     const size = stageSize()
     engineRef.current = createEngine(size.width, size.height, preset, paramsRef.current)
+    setEnergyHistory([])
+    setObjectRevision((revision) => revision + 1)
     setToast('Scene reset / constraints intact')
   }, [stageSize])
 
   const updateParam = useCallback(<K extends keyof SimulationParams>(key: K, value: SimulationParams[K]) => {
-    paramsRef.current = { ...paramsRef.current, [key]: value }
-    setParams(paramsRef.current)
+    const nextParams = { ...paramsRef.current, [key]: value }
+    paramsRef.current = nextParams
+    setParams(nextParams)
     if (key === 'objectMass' || key === 'objectBounce') {
       const engine = engineRef.current
       if (engine) engine.objects.forEach((object) => { object.mass = paramsRef.current.objectMass; object.bounce = paramsRef.current.objectBounce })
@@ -630,34 +713,111 @@ export default function App() {
 
   const addObjectAt = useCallback((kind: ObjectKind, x?: number, y?: number) => {
     const engine = engineRef.current
-    if (!engine) return
+    if (!engine) return undefined
     const safeX = x ?? engine.width * 0.5
     const safeY = y ?? 52
-    const object = makeObject({ kind, x: (safeX - 24) / engine.cloth.width, y: safeY / engine.cloth.floorY, size: kind === 'ball' ? 25 : 28, mass: paramsRef.current.gravity > 1.1 ? 1.5 : 1, bounce: 0.72, vy: 20 }, nextObjectId.current, engine.cloth.width, engine.cloth.floorY)
+    const object = makeObject({ kind, x: (safeX - 24) / engine.cloth.width, y: safeY / engine.cloth.floorY, size: kind === 'ball' ? 25 : 28, mass: paramsRef.current.objectMass, bounce: paramsRef.current.objectBounce, vy: 20 }, nextObjectId.current, engine.cloth.width, engine.cloth.floorY)
     nextObjectId.current += 1
     object.x = clamp(safeX, 36, engine.width - 36)
     object.y = clamp(safeY, 36, engine.cloth.floorY - objectRadius(object) - 10)
     engine.objects.push(object)
+    setActivePreset('custom')
+    setObjectRevision((revision) => revision + 1)
     setToast(`${OBJECT_LABELS[kind]} dropped into the field`)
+    return object
   }, [])
+
+  const dropBurst = useCallback(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    const kinds: ObjectKind[] = ['ball', 'cube', 'ring']
+    kinds.forEach((kind, index) => {
+      const object = addObjectAt(kind, engine.width * (0.3 + index * 0.2), 45 + index * 10)
+      if (object) {
+        object.vx = (index - 1) * 34
+        object.vy = 26 + index * 14
+        object.spin = (index - 1) * 1.8
+      }
+    })
+    setToast('Impact volley released / three bodies in motion')
+  }, [addObjectAt])
 
   const clearObjects = useCallback(() => {
     const engine = engineRef.current
     if (!engine) return
     engine.objects = []
+    setActivePreset('custom')
+    setObjectRevision((revision) => revision + 1)
     setToast('Object field cleared')
   }, [])
 
   const removeObject = useCallback((id: number) => {
     const engine = engineRef.current
     if (!engine) return
+    if (!engine.objects.some((object) => object.id === id)) return
     engine.objects = engine.objects.filter((object) => object.id !== id)
+    setActivePreset('custom')
+    setObjectRevision((revision) => revision + 1)
     setToast('Object removed from field')
   }, [])
+
+  const captureRunNote = useCallback(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    const objectCount = engine.objects.length
+    const note: RunNote = {
+      id: nextNoteId.current,
+      capturedAt: new Date().toISOString(),
+      preset: activePreset === 'custom' ? 'Custom field' : currentPreset.name,
+      energy: telemetry.energy,
+      tears: telemetry.tears,
+      contacts: telemetry.contacts,
+      objects: objectCount,
+      observation: describeRun(telemetry, objectCount),
+    }
+    nextNoteId.current += 1
+    setRunNotes((notes) => [note, ...notes].slice(0, 5))
+    setToast('Run snapshot archived')
+  }, [activePreset, currentPreset.name, telemetry])
+
+  const exportRunNotes = useCallback(() => {
+    const engine = engineRef.current
+    const payload = {
+      project: 'Loomfall / Constraint Lab',
+      exportedAt: new Date().toISOString(),
+      preset: activePreset === 'custom' ? 'Custom field' : currentPreset.name,
+      params: paramsRef.current,
+      telemetry,
+      objects: (engine?.objects ?? []).map(({ id, kind, x, y, vx, vy, size, mass, bounce }) => ({ id, kind, x, y, vx, vy, size, mass, bounce })),
+      notes: runNotes,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `loomfall-run-${new Date().toISOString().slice(0, 10)}.json`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    setToast('Run log exported as JSON')
+  }, [activePreset, currentPreset.name, runNotes, telemetry])
+
+  const clearRunNotes = useCallback(() => {
+    if (runNotes.length === 0) return
+    setRunNotes([])
+    setToast('Run archive cleared')
+  }, [runNotes.length])
 
   useEffect(() => {
     paramsRef.current = params
   }, [params])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(RUN_NOTES_STORAGE_KEY, JSON.stringify(runNotes))
+    } catch {
+      // The lab remains usable when storage is unavailable or blocked.
+    }
+  }, [runNotes])
 
   useEffect(() => {
     runningRef.current = isRunning
@@ -670,6 +830,10 @@ export default function App() {
   useEffect(() => {
     stressViewRef.current = stressView
   }, [stressView])
+
+  useEffect(() => {
+    depthViewRef.current = depthView
+  }, [depthView])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -686,7 +850,18 @@ export default function App() {
       canvas.height = height * dpr
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
       const preset = PRESETS.find((candidate) => candidate.id === presetRef.current) ?? PRESETS[0]
-      engineRef.current = createEngine(width, height, preset, paramsRef.current)
+      const previousEngine = engineRef.current
+      const nextEngine = createEngine(width, height, preset, paramsRef.current)
+      if (previousEngine) {
+        nextEngine.time = previousEngine.time
+        nextEngine.objects = previousEngine.objects.map((object) => ({
+          ...object,
+          x: clamp(object.x * (width / previousEngine.width), 36, width - 36),
+          y: clamp(object.y * (height / previousEngine.height), 36, nextEngine.cloth.floorY - objectRadius(object) - 10),
+        }))
+      }
+      engineRef.current = nextEngine
+      setObjectRevision((revision) => revision + 1)
     }
 
     resize()
@@ -706,7 +881,7 @@ export default function App() {
           engine.contacts = stepSimulation(engine.cloth, engine.objects, paramsRef.current, delta, engine.time)
           engine.time += delta
         }
-        drawScene(context, engine, toolRef.current, stressViewRef.current)
+        drawScene(context, engine, toolRef.current, stressViewRef.current, depthViewRef.current)
         frameCount += 1
         if (now - telemetryAt > 260) {
           const energyTotal = engine.cloth.points.reduce((total, point) => total + Math.hypot(point.x - point.px, point.y - point.py), 0) + engine.objects.reduce((total, object) => total + Math.hypot(object.vx, object.vy) * 0.02, 0)
@@ -719,6 +894,7 @@ export default function App() {
             contacts: engine.contacts.length,
             tears,
           })
+          setEnergyHistory((history) => [...history.slice(-7), Math.min(99.9, energyTotal / 10)])
           frameCount = 0
           telemetryAt = now
         }
@@ -745,11 +921,24 @@ export default function App() {
       else if (key === 'c') setTool('cut')
       else if (key === 'p') setTool('pin')
       else if (key === 'o') setTool('object')
+      else if (key === 'f') setFocusMode((current) => !current)
+      else if (key === 'd') setDepthView((current) => !current)
       else if (/^[1-5]$/.test(key)) loadPreset(PRESETS[Number(key) - 1].id)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [loadPreset, resetScene])
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden && runningRef.current) {
+        setIsRunning(false)
+        setToast('Auto-paused while the lab is hidden')
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [])
 
   const pointerPosition = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const engine = engineRef.current
@@ -832,9 +1021,10 @@ export default function App() {
   }
 
   const activeToolHint = tool === 'grab' ? 'Drag a node or object' : tool === 'cut' ? 'Drag across the cloth to sever springs' : tool === 'pin' ? 'Click a node to pin / release it' : `Click to drop a ${OBJECT_LABELS[objectKind].toLowerCase()}`
+  const fieldObjects = engineRef.current?.objects ?? []
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${focusMode ? 'focus-mode' : ''}`}>
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true"><span /><span /><span /></div>
@@ -849,7 +1039,7 @@ export default function App() {
           <span>ABOUT THE SOLVER</span>
         </nav>
         <div className="top-actions">
-          <span className="live-indicator"><i /> SIMULATION LIVE</span>
+          <span className={`live-indicator ${isRunning ? '' : 'is-paused'}`}><i /> SIMULATION {isRunning ? 'LIVE' : 'PAUSED'}</span>
           <button className="icon-button ghost" aria-label="Help" title="Keyboard shortcuts" onClick={() => setShowHelp(true)}><Icon name="help" size={17} /></button>
         </div>
       </header>
@@ -914,23 +1104,23 @@ export default function App() {
         <section className="stage-column">
           <div className="stage-header">
             <div><span className="stage-kicker">INTERACTIVE PHYSICS SANDBOX</span><h2>{currentPreset.name}<span className="title-slash"> / </span><em>{activePreset === 'custom' ? 'custom field' : currentPreset.description.toLowerCase()}</em></h2></div>
-            <div className="stage-header-actions"><button className={`view-toggle ${stressView ? 'active' : ''}`} onClick={() => setStressView((value) => !value)}><span className="toggle-dot" /> stress view</button><span className="stage-code">{activePreset === 'custom' ? 'CUSTOM' : currentPreset.code}</span></div>
+            <div className="stage-header-actions"><button className={`view-toggle ${stressView ? 'active' : ''}`} onClick={() => setStressView((value) => !value)} aria-pressed={stressView}><span className="toggle-dot" /> stress view</button><button className={`view-toggle ${depthView ? 'active' : ''}`} onClick={() => setDepthView((value) => !value)} aria-pressed={depthView} title="Toggle 3D depth projection (D)"><Icon name="depth" size={13} /> 3D depth</button><button className={`view-toggle ${focusMode ? 'active' : ''}`} onClick={() => setFocusMode((value) => !value)} aria-pressed={focusMode} title="Toggle focus mode (F)"><Icon name="focus" size={13} /> focus</button><span className="stage-code">{activePreset === 'custom' ? 'CUSTOM' : currentPreset.code}</span></div>
           </div>
           <div className="stage-frame">
             <canvas ref={canvasRef} className={`simulation-canvas tool-${tool}`} aria-label="Interactive cloth physics simulation" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} />
-            <div className="stage-overlay top-left"><span className="status-pip" /> {isRunning ? 'RUNNING' : 'PAUSED'} <span className="overlay-separator">•</span> {telemetry.fps || 60} FPS</div>
-            <div className="stage-overlay top-right"><span className="crosshair" /> pointer field</div>
+            <div className="stage-overlay top-left"><span className={`status-pip ${isRunning ? '' : 'is-paused'}`} /> {isRunning ? 'RUNNING' : 'PAUSED'} <span className="overlay-separator">•</span> {telemetry.fps || 60} FPS</div>
+            <div className="stage-overlay top-right"><span className="crosshair" /> {depthView ? '3D DEPTH PROJECTION' : 'pointer field'}</div>
             <div className="stage-overlay bottom-left">DRAG / CUT / PIN <span className="overlay-separator">•</span> {telemetry.nodes || '—'} NODES</div>
             <div className="stage-overlay bottom-right">{Math.round(params.gravity * 100)}% gravity</div>
           </div>
-          <div className="stage-caption" role="status" aria-live="polite"><span>{toast}</span><span className="caption-right"><span className="caption-key">SPACE</span> pause <span className="caption-key">R</span> reset</span></div>
+          <div className="stage-caption" role="status" aria-live="polite"><span>{toast}</span><span className="caption-right"><span className="caption-key">SPACE</span> pause <span className="caption-key">R</span> reset <span className="caption-key">D</span> 3D</span></div>
           <div className="transport-bar">
             <div className="transport-left">
               <button className="transport-play" onClick={() => setIsRunning((value) => !value)} aria-label={isRunning ? 'Pause simulation' : 'Play simulation'}>{isRunning ? <Icon name="pause" size={18} /> : <Icon name="play" size={18} />}</button>
               <button className="transport-reset" onClick={resetScene}><Icon name="reset" size={15} /> RESET SCENE</button>
               <span className="transport-time"><span className="transport-dot" /> T+ {(engineRef.current?.time ?? 0).toFixed(1).padStart(5, '0')}s</span>
             </div>
-            <div className="transport-right"><button className="object-drop-button" onClick={() => addObjectAt(objectKind)}><Icon name={objectKind} size={15} /> DROP {OBJECT_LABELS[objectKind].toUpperCase()}</button><button className="clear-button" onClick={clearObjects}><Icon name="trash" size={15} /> CLEAR OBJECTS</button></div>
+            <div className="transport-right"><button className="object-drop-button" onClick={() => addObjectAt(objectKind)}><Icon name={objectKind} size={15} /> DROP {OBJECT_LABELS[objectKind].toUpperCase()}</button><button className="volley-button" onClick={dropBurst}><Icon name="spark" size={15} /> VOLLEY</button><button className="clear-button" onClick={clearObjects}><Icon name="trash" size={15} /> CLEAR OBJECTS</button></div>
           </div>
 
           <section className="panel preset-panel">
@@ -950,7 +1140,7 @@ export default function App() {
         <aside className="right-rail">
           <section className="panel telemetry-panel">
             <div className="panel-heading"><div><span className="section-index">05</span><h2>Telemetry</h2></div><span className="telemetry-live"><i /> LIVE</span></div>
-            <div className="telemetry-main"><span className="telemetry-number">{telemetry.energy.toFixed(1)}</span><span className="telemetry-unit">energy<br />index</span><div className="telemetry-sparkline" aria-hidden="true"><span /><span /><span /><span /><span /><span /><span /><span /></div></div>
+            <div className="telemetry-main"><span className="telemetry-number">{telemetry.energy.toFixed(1)}</span><span className="telemetry-unit">energy<br />index</span><div className="telemetry-sparkline" role="img" aria-label="Recent energy history">{energyHistory.length === 0 ? <span style={{ height: '5px' }} /> : energyHistory.map((value, index) => <span key={`${index}-${value}`} style={{ height: `${Math.max(5, Math.round((value / 100) * 30))}px` }} />)}</div></div>
             <div className="metric-grid">
               <div><span>FPS</span><strong>{telemetry.fps || 60}</strong></div>
               <div><span>NODES</span><strong>{telemetry.nodes || '—'}</strong></div>
@@ -962,24 +1152,30 @@ export default function App() {
 
           <section className="panel objects-panel">
             <div className="panel-heading"><div><span className="section-index">06</span><h2>In the field</h2></div><button className="text-button" onClick={clearObjects}>clear</button></div>
-            <div className="object-list">
-              {(engineRef.current?.objects ?? []).length === 0 && <div className="empty-state"><Icon name="target" size={18} /><span>No objects yet.<br />Choose Drop or click the field.</span></div>}
-              {(engineRef.current?.objects ?? []).map((object) => <div className="object-row" key={object.id}><span className="object-icon" style={{ color: object.color }}><Icon name={object.kind} size={17} /></span><span className="object-info"><strong>{OBJECT_LABELS[object.kind]}</strong><small>{object.mass.toFixed(1)}× mass <span>•</span> {Math.round(object.size)}px</small></span><button className="remove-object" onClick={() => removeObject(object.id)} aria-label={`Remove ${OBJECT_LABELS[object.kind]}`}><Icon name="close" size={14} /></button></div>)}
+            <div className="object-list" key={objectRevision}>
+              {fieldObjects.length === 0 && <div className="empty-state"><Icon name="target" size={18} /><span>No objects yet.<br />Choose Drop or click the field.</span></div>}
+              {fieldObjects.map((object) => <div className="object-row" key={object.id}><span className="object-icon" style={{ color: object.color }}><Icon name={object.kind} size={17} /></span><span className="object-info"><strong>{OBJECT_LABELS[object.kind]}</strong><small>{object.mass.toFixed(1)}× mass <span>•</span> {Math.round(object.size)}px</small></span><button className="remove-object" onClick={() => removeObject(object.id)} aria-label={`Remove ${OBJECT_LABELS[object.kind]}`}><Icon name="close" size={14} /></button></div>)}
             </div>
             <div className="object-mass-control"><span>OBJECT MASS / BOUNCE</span><strong>{params.objectMass.toFixed(1)}× / {Math.round(params.objectBounce * 100)}%</strong></div>
           </section>
 
+          <section className="panel archive-panel">
+            <div className="panel-heading"><div><span className="section-index">07</span><h2>Run archive</h2></div><span className="control-hint">{runNotes.length}/5 SAVED</span></div>
+            <div className="archive-actions"><button className="archive-capture" onClick={captureRunNote}><Icon name="archive" size={14} /> CAPTURE SNAPSHOT</button><button className="icon-button ghost small" onClick={exportRunNotes} aria-label="Export run log" title="Export run log as JSON"><Icon name="download" size={14} /></button>{runNotes.length > 0 && <button className="text-button" onClick={clearRunNotes}>clear</button>}</div>
+            {runNotes.length === 0 ? <div className="archive-empty"><Icon name="spark" size={16} /><span>Save a moment from the field<br />to compare experiments.</span></div> : <div className="run-note-list">{runNotes.map((note) => <article className="run-note" key={note.id}><div className="run-note-meta"><span>RUN {String(note.id).padStart(2, '0')} <b>•</b> {note.preset}</span><time dateTime={note.capturedAt}>{new Date(note.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><div className="run-note-stats"><strong>{note.energy.toFixed(1)}<small>energy</small></strong><strong>{note.tears}<small>tears</small></strong><strong>{note.contacts}<small>contacts</small></strong><strong>{note.objects}<small>objects</small></strong></div><p>{note.observation}</p></article>)}</div>}
+          </section>
+
           <section className="panel shortcuts-panel">
-            <div className="panel-heading"><div><span className="section-index">07</span><h2>Field notes</h2></div><button className="icon-button ghost small" aria-label="Open shortcuts" onClick={() => setShowHelp(true)}><Icon name="chevron" size={15} /></button></div>
-            <div className="shortcut-list"><div><kbd>G</kbd><span>grab a node</span></div><div><kbd>C</kbd><span>cut constraints</span></div><div><kbd>1—5</kbd><span>load scenario</span></div></div>
+            <div className="panel-heading"><div><span className="section-index">08</span><h2>Field notes</h2></div><button className="icon-button ghost small" aria-label="Open shortcuts" onClick={() => setShowHelp(true)}><Icon name="chevron" size={15} /></button></div>
+            <div className="shortcut-list"><div><kbd>G</kbd><span>grab a node</span></div><div><kbd>C</kbd><span>cut constraints</span></div><div><kbd>F</kbd><span>focus the field</span></div><div><kbd>1—5</kbd><span>load scenario</span></div></div>
             <button className="help-link" onClick={() => setShowHelp(true)}><Icon name="help" size={14} /> full control map <Icon name="chevron" size={13} /></button>
           </section>
         </aside>
       </main>
 
-      <footer className="app-footer"><span><span className="footer-mark">✳</span> A tactile experiment by Loomfall Studio</span><span>VER 0.4.0 <span className="footer-separator">•</span> NO BACKEND <span className="footer-separator">•</span> STATIC / LOCAL FIRST</span></footer>
+      <footer className="app-footer"><span><span className="footer-mark">✳</span> A tactile experiment by Loomfall Studio</span><span>VER 0.5.0 <span className="footer-separator">•</span> NO BACKEND <span className="footer-separator">•</span> STATIC / LOCAL FIRST</span></footer>
 
-      {showHelp && <div className="modal-backdrop" role="presentation" onClick={() => setShowHelp(false)}><section className="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)} aria-label="Close help"><Icon name="close" size={18} /></button><span className="eyebrow"><span className="eyebrow-dot" /> CONTROL MAP</span><h2 id="help-title">Make the mesh move.</h2><p>Every tool works directly on the field. Try slow changes first, then introduce force.</p><div className="help-grid"><div><kbd>SPACE</kbd><span>pause / resume</span></div><div><kbd>R</kbd><span>reset current scene</span></div><div><kbd>G</kbd><span>grab cloth or objects</span></div><div><kbd>C</kbd><span>draw a cut path</span></div><div><kbd>P</kbd><span>pin / release a node</span></div><div><kbd>O</kbd><span>drop selected object</span></div></div><button className="modal-action" onClick={() => { setShowHelp(false); setTool('cut') }}><Icon name="cut" size={16} /> start with a cut</button></section></div>}
+      {showHelp && <div className="modal-backdrop" role="presentation" onClick={() => setShowHelp(false)}><section className="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)} aria-label="Close help"><Icon name="close" size={18} /></button><span className="eyebrow"><span className="eyebrow-dot" /> CONTROL MAP</span><h2 id="help-title">Make the mesh move.</h2><p>Every tool works directly on the field. Try slow changes first, then introduce force.</p><div className="help-grid"><div><kbd>SPACE</kbd><span>pause / resume</span></div><div><kbd>R</kbd><span>reset current scene</span></div><div><kbd>G</kbd><span>grab cloth or objects</span></div><div><kbd>C</kbd><span>draw a cut path</span></div><div><kbd>P</kbd><span>pin / release a node</span></div><div><kbd>O</kbd><span>drop selected object</span></div><div><kbd>D</kbd><span>toggle 3D depth projection</span></div><div><kbd>F</kbd><span>expand the field</span></div></div><button className="modal-action" onClick={() => { setShowHelp(false); setTool('cut') }}><Icon name="cut" size={16} /> start with a cut</button></section></div>}
     </div>
   )
 }
