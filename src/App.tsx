@@ -20,7 +20,7 @@ import {
 import './styles.css'
 
 type Tool = 'grab' | 'cut' | 'pin' | 'object'
-type PresetId = 'silk' | 'moon' | 'crosswind' | 'cut' | 'impact'
+type PresetId = 'silk' | 'moon' | 'crosswind' | 'cut' | 'impact' | 'orbit'
 
 type ObjectSeed = {
   kind: ObjectKind
@@ -155,6 +155,18 @@ const PRESETS: Preset[] = [
     objects: [
       { kind: 'ball', x: 0.48, y: 0.04, size: 39, mass: 4.2, bounce: 0.35, vy: 72 },
       { kind: 'ring', x: 0.74, y: 0.1, size: 28, mass: 1.7, bounce: 0.45, vy: 60, spin: -1.4 },
+    ],
+  },
+  {
+    id: 'orbit',
+    code: 'A06',
+    name: 'Orbit drift',
+    description: 'Low gravity / ribbon loop',
+    color: 'cyan',
+    params: { gravity: 0.08, stiffness: 0.88, damping: 0.998, wind: -0.65, speed: 0.82, objectMass: 0.62, objectBounce: 0.94, iterations: 7, tearThreshold: 2.38 },
+    objects: [
+      { kind: 'star', x: 0.22, y: 0.08, size: 25, mass: 0.5, bounce: 0.96, vx: 72, vy: 48, spin: 2.4 },
+      { kind: 'ring', x: 0.78, y: 0.12, size: 30, mass: 0.44, bounce: 0.92, vx: -58, vy: 34, spin: -2.8 },
     ],
   },
 ]
@@ -1031,7 +1043,7 @@ export default function App() {
       else if (key === 'o') setTool('object')
       else if (key === 'f') setFocusMode((current) => !current)
       else if (key === 'd') setDepthView((current) => !current)
-      else if (/^[1-5]$/.test(key)) loadPreset(PRESETS[Number(key) - 1].id)
+      else if (/^[1-6]$/.test(key)) loadPreset(PRESETS[Number(key) - 1].id)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -1245,7 +1257,7 @@ export default function App() {
           </div>
 
           <section className="panel preset-panel">
-            <div className="panel-heading preset-heading"><div><span className="section-index">04</span><h2>Scenarios</h2></div><span className="control-hint">Five starting conditions</span></div>
+            <div className="panel-heading preset-heading"><div><span className="section-index">04</span><h2>Scenarios</h2></div><span className="control-hint">{PRESETS.length} starting conditions</span></div>
             <div className="preset-grid">
               {PRESETS.map((preset) => (
                 <button key={preset.id} className={`preset-card tone-${preset.color} ${activePreset === preset.id ? 'is-active' : ''}`} onClick={() => loadPreset(preset.id)}>
@@ -1288,15 +1300,15 @@ export default function App() {
 
           <section className="panel shortcuts-panel">
             <div className="panel-heading"><div><span className="section-index">08</span><h2>Field notes</h2></div><button className="icon-button ghost small" aria-label="Open shortcuts" onClick={() => setShowHelp(true)}><Icon name="chevron" size={15} /></button></div>
-            <div className="shortcut-list"><div><kbd>G</kbd><span>grab a node</span></div><div><kbd>C</kbd><span>cut constraints</span></div><div><kbd>Z</kbd><span>undo / <kbd>⇧Z</kbd> redo</span></div><div><kbd>F</kbd><span>focus the field</span></div><div><kbd>1—5</kbd><span>load scenario</span></div><div><kbd>FRAME</kbd><span>step while paused</span></div></div>
+            <div className="shortcut-list"><div><kbd>G</kbd><span>grab a node</span></div><div><kbd>C</kbd><span>cut constraints</span></div><div><kbd>Z</kbd><span>undo / <kbd>⇧Z</kbd> redo</span></div><div><kbd>F</kbd><span>focus the field</span></div><div><kbd>1—6</kbd><span>load scenario</span></div><div><kbd>FRAME</kbd><span>step while paused</span></div></div>
             <button className="help-link" onClick={() => setShowHelp(true)}><Icon name="help" size={14} /> full control map <Icon name="chevron" size={13} /></button>
           </section>
         </aside>
       </main>
 
-      <footer className="app-footer"><span><span className="footer-mark">✳</span> A tactile experiment by Loomfall Studio</span><span>VER 0.7.0 <span className="footer-separator">•</span> NO BACKEND <span className="footer-separator">•</span> STATIC / LOCAL FIRST</span></footer>
+      <footer className="app-footer"><span><span className="footer-mark">✳</span> A tactile experiment by Loomfall Studio</span><span>VER 0.8.0 <span className="footer-separator">•</span> NO BACKEND <span className="footer-separator">•</span> STATIC / LOCAL FIRST</span></footer>
 
-      {showHelp && <div className="modal-backdrop" role="presentation" onClick={() => setShowHelp(false)}><section className="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)} aria-label="Close help"><Icon name="close" size={18} /></button><span className="eyebrow"><span className="eyebrow-dot" /> CONTROL MAP</span><h2 id="help-title">Make the mesh move.</h2><p>Every tool works directly on the field. Try slow changes first, then introduce force.</p><div className="help-grid"><div><kbd>SPACE</kbd><span>pause / resume</span></div><div><kbd>R</kbd><span>reset current scene</span></div><div><kbd>G</kbd><span>grab cloth or objects</span></div><div><kbd>C</kbd><span>draw a cut path</span></div><div><kbd>P</kbd><span>pin / release a node</span></div><div><kbd>O</kbd><span>drop selected object</span></div><div><kbd>D</kbd><span>toggle 3D depth projection</span></div><div><kbd>F</kbd><span>expand the field</span></div><div><kbd>⌘/CTRL Z</kbd><span>undo field edit</span></div><div><kbd>⌘/CTRL ⇧Z</kbd><span>redo field edit</span></div><div><kbd>FRAME</kbd><span>advance one paused frame</span></div></div><button className="modal-action" onClick={() => { setShowHelp(false); setTool('cut') }}><Icon name="cut" size={16} /> start with a cut</button></section></div>}
+      {showHelp && <div className="modal-backdrop" role="presentation" onClick={() => setShowHelp(false)}><section className="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)} aria-label="Close help"><Icon name="close" size={18} /></button><span className="eyebrow"><span className="eyebrow-dot" /> CONTROL MAP</span><h2 id="help-title">Make the mesh move.</h2><p>Every tool works directly on the field. Try slow changes first, then introduce force.</p><div className="help-grid"><div><kbd>SPACE</kbd><span>pause / resume</span></div><div><kbd>R</kbd><span>reset current scene</span></div><div><kbd>G</kbd><span>grab cloth or objects</span></div><div><kbd>C</kbd><span>draw a cut path</span></div><div><kbd>P</kbd><span>pin / release a node</span></div><div><kbd>O</kbd><span>drop selected object</span></div><div><kbd>D</kbd><span>toggle 3D depth projection</span></div><div><kbd>F</kbd><span>expand the field</span></div><div><kbd>⌘/CTRL Z</kbd><span>undo field edit</span></div><div><kbd>⌘/CTRL ⇧Z</kbd><span>redo field edit</span></div><div><kbd>FRAME</kbd><span>advance one paused frame</span></div><div><kbd>1—6</kbd><span>load a scenario</span></div></div><button className="modal-action" onClick={() => { setShowHelp(false); setTool('cut') }}><Icon name="cut" size={16} /> start with a cut</button></section></div>}
     </div>
   )
 }

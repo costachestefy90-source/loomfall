@@ -18,6 +18,8 @@ The follow-up pass added a bounded scene history for reversible grabs, cuts, pin
 
 The same pass added a paused **FRAME** control. It advances exactly one fixed solver step and creates an undo checkpoint, which makes slow-motion inspection of collisions and tears possible without changing the underlying integrator.
 
+The next scenario pass adds **Orbit drift**, a low-gravity, high-bounce setup with a star and ring entering on different arcs. It is tuned as a showcase for the depth projection: the ribbon has enough sideways motion to make the relief readable, while the slower fall gives the player time to pause, advance a frame, and compare the projected fold against the live telemetry. The scenario map now exposes all six starting conditions in the same compact responsive grid, and the footer version advances to `0.8.0`.
+
 Verification for this pass: `npm run lint`, `npm run build`, and a local-browser interaction check covering volley, focus mode, object persistence, and snapshot capture.
 
 The current visual reference is [`public/loomfall-banner.png`](../public/loomfall-banner.png), a real screenshot of the running laboratory.

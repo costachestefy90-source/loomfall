@@ -20,7 +20,7 @@ Physics sandboxes are often either opaque demos or intimidating engineering tool
 - Drop balls, cubes, rings, and stars directly onto the mesh.
 - Tune stiffness, damping, tear limit, gravity, wind, time scale, object mass, and bounce.
 - Switch to stress view to see stretched constraints warm from amber to red.
-- Start from five different experiments: Silk drop, Moon relay, Crosswind, Tear study, and Heavy impact.
+- Start from six different experiments: Silk drop, Moon relay, Crosswind, Tear study, Heavy impact, and Orbit drift.
 - Pause, reset, clear objects, or use keyboard shortcuts without leaving the field.
 - Read live telemetry for FPS, node count, active springs, energy index, tears, and contacts.
 - Launch an impact volley that drops three bodies with different trajectories.
@@ -47,7 +47,7 @@ Physics sandboxes are often either opaque demos or intimidating engineering tool
 | `⌘/Ctrl+Z` | Undo the last field edit |
 | `⌘/Ctrl+Shift+Z` | Redo a field edit |
 | `FRAME` | Advance one frame while paused |
-| `1`–`5` | Load a scenario preset |
+| `1`–`6` | Load a scenario preset |
 
 The same actions are available through the tool panel and transport bar, so the lab is usable with a mouse, touch pointer, or keyboard.
 

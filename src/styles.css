@@ -196,7 +196,7 @@ input[type='range']::-moz-range-thumb { width: 7px; height: 7px; border: 2px sol
 
 .preset-panel { padding: 16px 15px 15px; }
 .preset-heading { margin-bottom: 12px; }
-.preset-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
+.preset-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; }
 .preset-card { min-width: 0; min-height: 78px; display: flex; flex-direction: column; align-items: stretch; gap: 7px; padding: 10px 10px 9px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.025); color: var(--muted); cursor: pointer; text-align: left; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
 .preset-card:hover { transform: translateY(-2px); border-color: var(--line-strong); background: rgba(255,255,255,.06); }
 .preset-card.is-active { border-color: var(--preset-color); background: color-mix(in srgb, var(--preset-color) 10%, transparent); box-shadow: inset 0 2px 0 var(--preset-color); }
@@ -295,7 +295,7 @@ input[type='range']::-moz-range-thumb { width: 7px; height: 7px; border: 2px sol
   .workspace { grid-template-columns: 245px minmax(460px, 1fr); }
   .right-rail { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: start; }
   .right-rail .panel { min-height: 174px; }
-  .preset-grid { grid-template-columns: repeat(5, minmax(90px, 1fr)); overflow-x: auto; padding-bottom: 2px; }
+  .preset-grid { grid-template-columns: repeat(6, minmax(90px, 1fr)); overflow-x: auto; padding-bottom: 2px; }
 }
 
 @media (max-width: 860px) {
@@ -307,7 +307,7 @@ input[type='range']::-moz-range-thumb { width: 7px; height: 7px; border: 2px sol
   .left-rail { order: 2; width: 100%; display: grid; grid-template-columns: 1fr 1.4fr; align-items: start; }
   .right-rail { order: 3; width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
   .stage-frame { height: min(68vw, 570px); min-height: 370px; }
-  .preset-grid { grid-template-columns: repeat(5, minmax(125px, 1fr)); }
+  .preset-grid { grid-template-columns: repeat(6, minmax(125px, 1fr)); }
   .app-footer { padding: 0 15px 14px; }
   .app-footer span:last-child { text-align: right; }
 }
