@@ -74,7 +74,7 @@ const DEFAULT_PARAMS: SimulationParams = {
   objectMass: 1,
   objectBounce: 0.72,
   iterations: 6,
-  tearThreshold: 1.72,
+  tearThreshold: 2.2,
 }
 
 const PRESETS: Preset[] = [
@@ -84,7 +84,7 @@ const PRESETS: Preset[] = [
     name: 'Silk drop',
     description: 'Soft drape / low gravity',
     color: 'amber',
-    params: { gravity: 0.72, stiffness: 0.78, damping: 0.995, wind: 0.14, speed: 0.86, objectMass: 0.72, objectBounce: 0.78, iterations: 6, tearThreshold: 1.9 },
+    params: { gravity: 0.72, stiffness: 0.78, damping: 0.995, wind: 0.14, speed: 0.86, objectMass: 0.72, objectBounce: 0.78, iterations: 6, tearThreshold: 2.25 },
     objects: [
       { kind: 'ball', x: 0.45, y: 0.17, size: 24, mass: 0.85, bounce: 0.74, vy: 68 },
       { kind: 'ring', x: 0.78, y: 0.23, size: 25, mass: 0.45, bounce: 0.82, vy: 42, spin: 1.8 },
@@ -96,7 +96,7 @@ const PRESETS: Preset[] = [
     name: 'Moon relay',
     description: 'Low gravity / long hang',
     color: 'cyan',
-    params: { gravity: 0.2, stiffness: 0.93, damping: 0.997, wind: -0.2, speed: 0.9, objectMass: 1.15, objectBounce: 0.88, iterations: 7, tearThreshold: 2.2 },
+    params: { gravity: 0.2, stiffness: 0.93, damping: 0.997, wind: -0.2, speed: 0.9, objectMass: 1.15, objectBounce: 0.88, iterations: 7, tearThreshold: 2.4 },
     objects: [
       { kind: 'cube', x: 0.34, y: 0.18, size: 28, mass: 1.6, bounce: 0.88, vy: 34, spin: -1.2 },
       { kind: 'star', x: 0.7, y: 0.13, size: 26, mass: 0.55, bounce: 0.9, vy: 48, spin: 2.3 },
@@ -108,7 +108,7 @@ const PRESETS: Preset[] = [
     name: 'Crosswind',
     description: 'Strong lateral gusts',
     color: 'pink',
-    params: { gravity: 0.95, stiffness: 0.72, damping: 0.989, wind: 1, speed: 1.05, objectMass: 1.1, objectBounce: 0.68, iterations: 6, tearThreshold: 1.56 },
+    params: { gravity: 0.95, stiffness: 0.72, damping: 0.989, wind: 1, speed: 1.05, objectMass: 1.1, objectBounce: 0.68, iterations: 6, tearThreshold: 1.82 },
     objects: [
       { kind: 'ball', x: 0.3, y: 0.1, size: 25, mass: 1.1, bounce: 0.72, vx: 60, vy: 95 },
       { kind: 'cube', x: 0.68, y: 0.05, size: 24, mass: 1.3, bounce: 0.65, vx: -25, vy: 70, spin: 1.5 },
@@ -131,7 +131,7 @@ const PRESETS: Preset[] = [
     name: 'Heavy impact',
     description: 'Dense objects / stiff mesh',
     color: 'violet',
-    params: { gravity: 1.35, stiffness: 0.98, damping: 0.985, wind: 0, speed: 1.08, objectMass: 3.6, objectBounce: 0.32, iterations: 8, tearThreshold: 1.5 },
+    params: { gravity: 1.35, stiffness: 0.98, damping: 0.985, wind: 0, speed: 1.08, objectMass: 3.6, objectBounce: 0.32, iterations: 8, tearThreshold: 1.7 },
     objects: [
       { kind: 'ball', x: 0.48, y: 0.04, size: 39, mass: 4.2, bounce: 0.35, vy: 72 },
       { kind: 'ring', x: 0.74, y: 0.1, size: 28, mass: 1.7, bounce: 0.45, vy: 60, spin: -1.4 },
@@ -170,7 +170,7 @@ function makeObject(seed: ObjectSeed, id: number, clothWidth: number, floorY: nu
     id,
     kind: seed.kind,
     x: 24 + clamp(seed.x, 0.08, 0.92) * clothWidth,
-    y: clamp(seed.y * floorY, 38, floorY - size - 12),
+    y: clamp(36 + seed.y * 44, 34, floorY - size - 12),
     vx: seed.vx ?? 0,
     vy: seed.vy ?? 0,
     angle: 0,
@@ -293,37 +293,52 @@ function drawScene(ctx: CanvasRenderingContext2D, engine: Engine, tool: Tool, st
   }
 
   ctx.save()
-  ctx.globalAlpha = 0.18
-  ctx.filter = 'blur(16px)'
-  ctx.fillStyle = '#c95d91'
-  drawCells()
-  ctx.restore()
-
-  ctx.save()
   ctx.globalAlpha = 0.84
   ctx.fillStyle = clothGradient
   drawCells()
   ctx.restore()
 
-  ctx.save()
-  for (const constraint of cloth.constraints) {
-    if (!constraint.active || constraint.kind === 'bend') continue
-    const a = cloth.points[constraint.a]
-    const b = cloth.points[constraint.b]
-    const ratio = Math.hypot(b.x - a.x, b.y - a.y) / constraint.rest
-    ctx.beginPath()
-    ctx.moveTo(a.x, a.y)
-    ctx.lineTo(b.x, b.y)
-    if (stressView && ratio > 1.04) {
-      ctx.strokeStyle = ratio > 1.18 ? 'rgba(255, 114, 132, 0.86)' : 'rgba(246, 200, 95, 0.76)'
-      ctx.lineWidth = ratio > 1.18 ? 2.6 : 1.8
-    } else {
-      ctx.strokeStyle = constraint.kind === 'shear' ? 'rgba(255, 238, 189, 0.22)' : 'rgba(255, 230, 172, 0.54)'
-      ctx.lineWidth = constraint.kind === 'shear' ? 0.7 : 1.05
+  if (stressView) {
+    ctx.save()
+    for (const constraint of cloth.constraints) {
+      if (!constraint.active || constraint.kind === 'bend') continue
+      const a = cloth.points[constraint.a]
+      const b = cloth.points[constraint.b]
+      const ratio = Math.hypot(b.x - a.x, b.y - a.y) / constraint.rest
+      ctx.beginPath()
+      ctx.moveTo(a.x, a.y)
+      ctx.lineTo(b.x, b.y)
+      ctx.strokeStyle = ratio > 1.18 ? 'rgba(255, 114, 132, 0.86)' : ratio > 1.04 ? 'rgba(246, 200, 95, 0.76)' : constraint.kind === 'shear' ? 'rgba(255, 238, 189, 0.22)' : 'rgba(255, 230, 172, 0.54)'
+      ctx.lineWidth = ratio > 1.18 ? 2.6 : ratio > 1.04 ? 1.8 : constraint.kind === 'shear' ? 0.7 : 1.05
+      ctx.stroke()
     }
+    ctx.restore()
+  } else {
+    ctx.save()
+    ctx.beginPath()
+    for (const constraint of cloth.constraints) {
+      if (!constraint.active || constraint.kind !== 'structural') continue
+      const a = cloth.points[constraint.a]
+      const b = cloth.points[constraint.b]
+      ctx.moveTo(a.x, a.y)
+      ctx.lineTo(b.x, b.y)
+    }
+    ctx.strokeStyle = 'rgba(255, 230, 172, 0.54)'
+    ctx.lineWidth = 1.05
     ctx.stroke()
+    ctx.beginPath()
+    for (const constraint of cloth.constraints) {
+      if (!constraint.active || constraint.kind !== 'shear') continue
+      const a = cloth.points[constraint.a]
+      const b = cloth.points[constraint.b]
+      ctx.moveTo(a.x, a.y)
+      ctx.lineTo(b.x, b.y)
+    }
+    ctx.strokeStyle = 'rgba(255, 238, 189, 0.22)'
+    ctx.lineWidth = 0.7
+    ctx.stroke()
+    ctx.restore()
   }
-  ctx.restore()
 
   const brokenPoints = new Set<number>()
   cloth.constraints.forEach((constraint) => {
