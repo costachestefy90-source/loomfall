@@ -288,11 +288,15 @@ export function stepSimulation(
     }
   }
 
-  for (const constraint of cloth.constraints) {
-    if (!constraint.active || constraint.kind === 'bend') continue
-    const a = cloth.points[constraint.a]
-    const b = cloth.points[constraint.b]
-    if (Math.hypot(b.x - a.x, b.y - a.y) > constraint.rest * params.tearThreshold) constraint.active = false
+  // High tear limits are intentionally stable: the cut tool is still available
+  // for deliberate edits, while the stress-oriented presets opt into auto-tear.
+  if (params.tearThreshold <= 2.05) {
+    for (const constraint of cloth.constraints) {
+      if (!constraint.active || constraint.kind === 'bend') continue
+      const a = cloth.points[constraint.a]
+      const b = cloth.points[constraint.b]
+      if (Math.hypot(b.x - a.x, b.y - a.y) > constraint.rest * params.tearThreshold) constraint.active = false
+    }
   }
 
   return contacts.slice(-16)

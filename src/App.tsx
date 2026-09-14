@@ -702,8 +702,10 @@ export default function App() {
         if (!engine.lastTime) engine.lastTime = now
         const delta = Math.min((now - engine.lastTime) / 1000, 0.032)
         engine.lastTime = now
-        if (runningRef.current) engine.contacts = stepSimulation(engine.cloth, engine.objects, paramsRef.current, delta, engine.time)
-        engine.time += delta
+        if (runningRef.current) {
+          engine.contacts = stepSimulation(engine.cloth, engine.objects, paramsRef.current, delta, engine.time)
+          engine.time += delta
+        }
         drawScene(context, engine, toolRef.current, stressViewRef.current)
         frameCount += 1
         if (now - telemetryAt > 260) {
@@ -915,13 +917,13 @@ export default function App() {
             <div className="stage-header-actions"><button className={`view-toggle ${stressView ? 'active' : ''}`} onClick={() => setStressView((value) => !value)}><span className="toggle-dot" /> stress view</button><span className="stage-code">{activePreset === 'custom' ? 'CUSTOM' : currentPreset.code}</span></div>
           </div>
           <div className="stage-frame">
-            <canvas ref={canvasRef} className="simulation-canvas" aria-label="Interactive cloth physics simulation" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} />
+            <canvas ref={canvasRef} className={`simulation-canvas tool-${tool}`} aria-label="Interactive cloth physics simulation" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} />
             <div className="stage-overlay top-left"><span className="status-pip" /> {isRunning ? 'RUNNING' : 'PAUSED'} <span className="overlay-separator">•</span> {telemetry.fps || 60} FPS</div>
             <div className="stage-overlay top-right"><span className="crosshair" /> pointer field</div>
             <div className="stage-overlay bottom-left">DRAG / CUT / PIN <span className="overlay-separator">•</span> {telemetry.nodes || '—'} NODES</div>
             <div className="stage-overlay bottom-right">{Math.round(params.gravity * 100)}% gravity</div>
           </div>
-          <div className="stage-caption"><span>{toast}</span><span className="caption-right"><span className="caption-key">SPACE</span> pause <span className="caption-key">R</span> reset</span></div>
+          <div className="stage-caption" role="status" aria-live="polite"><span>{toast}</span><span className="caption-right"><span className="caption-key">SPACE</span> pause <span className="caption-key">R</span> reset</span></div>
           <div className="transport-bar">
             <div className="transport-left">
               <button className="transport-play" onClick={() => setIsRunning((value) => !value)} aria-label={isRunning ? 'Pause simulation' : 'Play simulation'}>{isRunning ? <Icon name="pause" size={18} /> : <Icon name="play" size={18} />}</button>
