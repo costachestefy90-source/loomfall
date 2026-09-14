@@ -4,6 +4,10 @@ Loomfall is a tactile cloth-physics laboratory for the browser. Drop a ball, cub
 
 > Static-first, dependency-light, and designed to run on GitHub Pages.
 
+![Loomfall laboratory view](public/loomfall-banner.png)
+
+The screenshot above is a real capture of the running laboratory, including the live mesh and collision objects.
+
 ## Why it exists
 
 Physics sandboxes are often either opaque demos or intimidating engineering tools. Loomfall sits between those extremes. Every visible change has a physical cause: gravity pulls the nodes, wind pushes the surface, damping controls the memory of movement, and the constraint network decides whether a fold holds or tears.
@@ -74,10 +78,12 @@ The Vite `base: './'` setting keeps the generated `dist/` folder compatible with
 
 The five implementation directions considered before coding are documented in [`docs/design-directions.md`](docs/design-directions.md). The chosen direction is a dependable 2D Constraint Lab foundation: expressive enough to expose the physics, small enough to remain reliable as a static site, and open-ended enough for later experiments.
 
+The Pages deployment is defined in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml). Every push to `main` typechecks, builds `dist/`, uploads the artifact, and deploys it through the GitHub Pages environment.
+
 ## Credits
 
 Built as an original Stardance project by Loomfall Studio. The visual system, simulation, interactions, and copy are part of this project; there are no external runtime services.
 
 ## Live demo
 
-The public GitHub repository and live Pages URL will be added here after the deployment is verified.
+Try the live build at [costachestefy90-source.github.io/loomfall](https://costachestefy90-source.github.io/loomfall/). The source is public at [github.com/costachestefy90-source/loomfall](https://github.com/costachestefy90-source/loomfall).
