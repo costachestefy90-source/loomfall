@@ -175,14 +175,23 @@ input[type='range']::-moz-range-thumb { width: 7px; height: 7px; border: 2px sol
 .transport-left, .transport-right { display: flex; align-items: center; gap: 9px; }
 .transport-play { width: 31px; height: 31px; display: grid; place-items: center; border: 0; border-radius: 8px; background: var(--cyan); color: var(--ink); cursor: pointer; box-shadow: 0 6px 16px rgba(109,225,208,.18); transition: transform .18s ease, background .18s ease; }
 .transport-play:hover { transform: translateY(-1px); background: #9af4e6; }
+.frame-button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 7px; border: 1px solid rgba(109,225,208,.18); border-radius: 7px; background: rgba(109,225,208,.045); color: var(--muted); cursor: pointer; font: 500 8px/1 'DM Mono', monospace; letter-spacing: .04em; }
+.frame-button:hover:not(:disabled) { color: var(--cyan); border-color: var(--cyan); background: rgba(109,225,208,.1); }
+.frame-button:disabled { cursor: not-allowed; opacity: .32; }
 .transport-reset, .object-drop-button, .clear-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 8px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; font: 500 9px/1 'DM Mono', monospace; letter-spacing: .04em; }
 .transport-reset:hover, .clear-button:hover { color: var(--text); border-color: var(--line); background: rgba(255,255,255,.04); }
+.history-button, .capture-button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 7px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--faint); cursor: pointer; font: 500 8px/1 'DM Mono', monospace; letter-spacing: .04em; }
+.history-button.icon-only { width: 28px; height: 28px; justify-content: center; padding: 0; }
+.history-button:hover:not(:disabled) { color: var(--text); border-color: var(--line); background: rgba(255,255,255,.04); }
+.history-button:disabled { cursor: not-allowed; opacity: .34; }
 .transport-time { padding-left: 5px; color: var(--faint); font: 500 9px/1 'DM Mono', monospace; }
 .transport-dot { display: inline-block; width: 5px; height: 5px; margin-right: 4px; border-radius: 50%; background: var(--amber); }
 .object-drop-button { color: var(--cyan); border-color: rgba(109,225,208,.24); background: rgba(109,225,208,.06); }
 .object-drop-button:hover { border-color: var(--cyan); background: rgba(109,225,208,.12); }
 .volley-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 8px; border: 1px solid rgba(246,200,95,.25); border-radius: 7px; background: rgba(246,200,95,.06); color: var(--amber); cursor: pointer; font: 500 9px/1 'DM Mono', monospace; letter-spacing: .04em; }
 .volley-button:hover { border-color: var(--amber); background: rgba(246,200,95,.13); }
+.capture-button { color: var(--pink); border-color: rgba(217,116,167,.24); background: rgba(217,116,167,.06); }
+.capture-button:hover { color: #f3a9c7; border-color: var(--pink); background: rgba(217,116,167,.13); }
 .clear-button { color: var(--faint); }
 
 .preset-panel { padding: 16px 15px 15px; }

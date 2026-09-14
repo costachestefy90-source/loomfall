@@ -4,6 +4,7 @@ import {
   countActiveConstraints,
   createCloth,
   cutAlongPath,
+  cloneCloth,
   findNearestObject,
   findNearestPoint,
   objectRadius,
@@ -74,6 +75,12 @@ type RunNote = {
   contacts: number
   objects: number
   observation: string
+}
+
+type SceneSnapshot = {
+  cloth: Cloth
+  objects: SimObject[]
+  time: number
 }
 
 const RUN_NOTES_STORAGE_KEY = 'loomfall.run-notes'
@@ -196,6 +203,14 @@ function projectPosition(x: number, y: number, engine: Engine, depthView: boolea
   if (!depthView) return { x, y }
   const planeDepth = ((y - 68) / Math.max(engine.cloth.height, 1) - 0.5) * 24
   return { x: x + planeDepth * 0.52, y: y - planeDepth * 0.3 }
+}
+
+function takeSceneSnapshot(engine: Engine): SceneSnapshot {
+  return {
+    cloth: cloneCloth(engine.cloth),
+    objects: engine.objects.map((object) => ({ ...object })),
+    time: engine.time,
+  }
 }
 
 function readStoredRunNotes(): RunNote[] {
@@ -583,6 +598,9 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     case 'download': return <svg {...common}><path d="M12 3v12M7 10l5 5 5-5M4 20h16" /></svg>
     case 'focus': return <svg {...common}><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3M9 9h6v6H9z" /></svg>
     case 'depth': return <svg {...common}><path d="M4 7l8-4 8 4-8 4-8-4zM4 12l8 4 8-4M4 17l8 4 8-4" /></svg>
+    case 'undo': return <svg {...common}><path d="M9 7H4v5M4 12c1.8-4.8 7-7.2 11.5-5.1A7 7 0 0 1 19 13.2" /></svg>
+    case 'redo': return <svg {...common}><path d="M15 7h5v5M20 12c-1.8-4.8-7-7.2-11.5-5.1A7 7 0 0 0 5 13.2" /></svg>
+    case 'step': return <svg {...common}><path d="M5 5v14M9 7l8 5-8 5V7z" fill="currentColor" stroke="none" /></svg>
     default: return <svg {...common}><circle cx="12" cy="12" r="8" /></svg>
   }
 }
@@ -661,10 +679,13 @@ export default function App() {
   const [energyHistory, setEnergyHistory] = useState<number[]>([])
   const [runNotes, setRunNotes] = useState<RunNote[]>(readStoredRunNotes)
   const [objectRevision, setObjectRevision] = useState(0)
+  const [historyRevision, setHistoryRevision] = useState(0)
   const toolRef = useRef<Tool>('grab')
   const stressViewRef = useRef(false)
   const depthViewRef = useRef(false)
   const nextNoteId = useRef(runNotes.reduce((highest, note) => Math.max(highest, note.id), 0) + 1)
+  const undoStackRef = useRef<SceneSnapshot[]>([])
+  const redoStackRef = useRef<SceneSnapshot[]>([])
 
   const currentPreset = useMemo(() => PRESETS.find((preset) => preset.id === presetRef.current) ?? PRESETS[0], [activePreset])
 
@@ -676,6 +697,71 @@ export default function App() {
     }
   }, [])
 
+  const clearHistory = useCallback(() => {
+    undoStackRef.current = []
+    redoStackRef.current = []
+    setHistoryRevision((revision) => revision + 1)
+  }, [])
+
+  const rememberScene = useCallback(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    undoStackRef.current = [...undoStackRef.current.slice(-23), takeSceneSnapshot(engine)]
+    redoStackRef.current = []
+    setHistoryRevision((revision) => revision + 1)
+  }, [])
+
+  const restoreSnapshot = useCallback((snapshot: SceneSnapshot, message: string) => {
+    const engine = engineRef.current
+    if (!engine) return
+    engine.cloth = cloneCloth(snapshot.cloth)
+    engine.objects = snapshot.objects.map((object) => ({ ...object }))
+    engine.time = snapshot.time
+    engine.contacts = []
+    engine.dragTarget = null
+    engine.pointer.active = false
+    setObjectRevision((revision) => revision + 1)
+    setEnergyHistory([])
+    setToast(message)
+  }, [])
+
+  const undoScene = useCallback(() => {
+    const engine = engineRef.current
+    const snapshot = undoStackRef.current.pop()
+    if (!engine || !snapshot) {
+      setToast('Nothing to undo yet')
+      return
+    }
+    redoStackRef.current.push(takeSceneSnapshot(engine))
+    restoreSnapshot(snapshot, 'Last field edit undone')
+    setHistoryRevision((revision) => revision + 1)
+  }, [restoreSnapshot])
+
+  const redoScene = useCallback(() => {
+    const engine = engineRef.current
+    const snapshot = redoStackRef.current.pop()
+    if (!engine || !snapshot) {
+      setToast('Nothing to redo yet')
+      return
+    }
+    undoStackRef.current.push(takeSceneSnapshot(engine))
+    restoreSnapshot(snapshot, 'Field edit restored')
+    setHistoryRevision((revision) => revision + 1)
+  }, [restoreSnapshot])
+
+  const stepFrame = useCallback(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    if (isRunning) {
+      setToast('Pause the simulation before stepping')
+      return
+    }
+    rememberScene()
+    engine.contacts = stepSimulation(engine.cloth, engine.objects, paramsRef.current, 1 / 60, engine.time)
+    engine.time += 1 / 60
+    setToast('Advanced one frame / undo to rewind')
+  }, [isRunning, rememberScene])
+
   const loadPreset = useCallback((id: PresetId) => {
     const preset = PRESETS.find((candidate) => candidate.id === id) ?? PRESETS[0]
     const size = stageSize()
@@ -685,19 +771,21 @@ export default function App() {
     setParams(nextParams)
     setActivePreset(preset.id)
     engineRef.current = createEngine(size.width, size.height, preset, nextParams)
+    clearHistory()
     setEnergyHistory([])
     setObjectRevision((revision) => revision + 1)
     setToast(`${preset.name} loaded`)
-  }, [stageSize])
+  }, [clearHistory, stageSize])
 
   const resetScene = useCallback(() => {
     const preset = PRESETS.find((candidate) => candidate.id === presetRef.current) ?? PRESETS[0]
     const size = stageSize()
     engineRef.current = createEngine(size.width, size.height, preset, paramsRef.current)
+    clearHistory()
     setEnergyHistory([])
     setObjectRevision((revision) => revision + 1)
     setToast('Scene reset / constraints intact')
-  }, [stageSize])
+  }, [clearHistory, stageSize])
 
   const updateParam = useCallback(<K extends keyof SimulationParams>(key: K, value: SimulationParams[K]) => {
     const nextParams = { ...paramsRef.current, [key]: value }
@@ -711,9 +799,10 @@ export default function App() {
     setToast('Custom lab parameters active')
   }, [])
 
-  const addObjectAt = useCallback((kind: ObjectKind, x?: number, y?: number) => {
+  const addObjectAt = useCallback((kind: ObjectKind, x?: number, y?: number, recordHistory = true) => {
     const engine = engineRef.current
     if (!engine) return undefined
+    if (recordHistory) rememberScene()
     const safeX = x ?? engine.width * 0.5
     const safeY = y ?? 52
     const object = makeObject({ kind, x: (safeX - 24) / engine.cloth.width, y: safeY / engine.cloth.floorY, size: kind === 'ball' ? 25 : 28, mass: paramsRef.current.objectMass, bounce: paramsRef.current.objectBounce, vy: 20 }, nextObjectId.current, engine.cloth.width, engine.cloth.floorY)
@@ -725,14 +814,15 @@ export default function App() {
     setObjectRevision((revision) => revision + 1)
     setToast(`${OBJECT_LABELS[kind]} dropped into the field`)
     return object
-  }, [])
+  }, [rememberScene])
 
   const dropBurst = useCallback(() => {
     const engine = engineRef.current
     if (!engine) return
+    rememberScene()
     const kinds: ObjectKind[] = ['ball', 'cube', 'ring']
     kinds.forEach((kind, index) => {
-      const object = addObjectAt(kind, engine.width * (0.3 + index * 0.2), 45 + index * 10)
+      const object = addObjectAt(kind, engine.width * (0.3 + index * 0.2), 45 + index * 10, false)
       if (object) {
         object.vx = (index - 1) * 34
         object.vy = 26 + index * 14
@@ -740,26 +830,29 @@ export default function App() {
       }
     })
     setToast('Impact volley released / three bodies in motion')
-  }, [addObjectAt])
+  }, [addObjectAt, rememberScene])
 
   const clearObjects = useCallback(() => {
     const engine = engineRef.current
     if (!engine) return
+    if (engine.objects.length === 0) return
+    rememberScene()
     engine.objects = []
     setActivePreset('custom')
     setObjectRevision((revision) => revision + 1)
     setToast('Object field cleared')
-  }, [])
+  }, [rememberScene])
 
   const removeObject = useCallback((id: number) => {
     const engine = engineRef.current
     if (!engine) return
     if (!engine.objects.some((object) => object.id === id)) return
+    rememberScene()
     engine.objects = engine.objects.filter((object) => object.id !== id)
     setActivePreset('custom')
     setObjectRevision((revision) => revision + 1)
     setToast('Object removed from field')
-  }, [])
+  }, [rememberScene])
 
   const captureRunNote = useCallback(() => {
     const engine = engineRef.current
@@ -800,6 +893,16 @@ export default function App() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     setToast('Run log exported as JSON')
   }, [activePreset, currentPreset.name, runNotes, telemetry])
+
+  const exportCanvas = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const link = document.createElement('a')
+    link.href = canvas.toDataURL('image/png')
+    link.download = `loomfall-field-${new Date().toISOString().slice(0, 10)}.png`
+    link.click()
+    setToast('Field image exported as PNG')
+  }, [])
 
   const clearRunNotes = useCallback(() => {
     if (runNotes.length === 0) return
@@ -861,6 +964,7 @@ export default function App() {
         }))
       }
       engineRef.current = nextEngine
+      clearHistory()
       setObjectRevision((revision) => revision + 1)
     }
 
@@ -906,14 +1010,18 @@ export default function App() {
       observer.disconnect()
       cancelAnimationFrame(frameId)
     }
-  }, [])
+  }, [clearHistory])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
       const key = event.key.toLowerCase()
-      if (event.code === 'Space') {
+      if ((event.metaKey || event.ctrlKey) && key === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) redoScene()
+        else undoScene()
+      } else if (event.code === 'Space') {
         event.preventDefault()
         setIsRunning((current) => !current)
       } else if (key === 'r') resetScene()
@@ -927,7 +1035,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [loadPreset, resetScene])
+  }, [loadPreset, redoScene, resetScene, undoScene])
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -958,19 +1066,27 @@ export default function App() {
     event.currentTarget.setPointerCapture(event.pointerId)
     if (tool === 'grab') {
       const objectIndex = findNearestObject(engine.objects, x, y)
-      if (objectIndex >= 0) engine.dragTarget = { type: 'object', index: objectIndex }
+      if (objectIndex >= 0) {
+        rememberScene()
+        engine.dragTarget = { type: 'object', index: objectIndex }
+      }
       else {
         const pointIndex = findNearestPoint(engine.cloth, x, y)
-        if (pointIndex >= 0) engine.dragTarget = { type: 'point', index: pointIndex }
+        if (pointIndex >= 0) {
+          rememberScene()
+          engine.dragTarget = { type: 'point', index: pointIndex }
+        }
       }
     } else if (tool === 'pin') {
       const pointIndex = findNearestPoint(engine.cloth, x, y)
       if (pointIndex >= 0) {
+        rememberScene()
         togglePin(engine.cloth, pointIndex)
         setToast(engine.cloth.points[pointIndex].pinned ? 'Point pinned in place' : 'Point released')
       }
       engine.pointer.active = false
     } else if (tool === 'cut') {
+      rememberScene()
       engine.dragTarget = { type: 'cut', index: -1 }
     } else if (tool === 'object') {
       addObjectAt(objectKind, x, y)
@@ -1022,6 +1138,8 @@ export default function App() {
 
   const activeToolHint = tool === 'grab' ? 'Drag a node or object' : tool === 'cut' ? 'Drag across the cloth to sever springs' : tool === 'pin' ? 'Click a node to pin / release it' : `Click to drop a ${OBJECT_LABELS[objectKind].toLowerCase()}`
   const fieldObjects = engineRef.current?.objects ?? []
+  const canUndo = undoStackRef.current.length > 0
+  const canRedo = redoStackRef.current.length > 0
 
   return (
     <div className={`app-shell ${focusMode ? 'focus-mode' : ''}`}>
@@ -1114,13 +1232,16 @@ export default function App() {
             <div className="stage-overlay bottom-right">{Math.round(params.gravity * 100)}% gravity</div>
           </div>
           <div className="stage-caption" role="status" aria-live="polite"><span>{toast}</span><span className="caption-right"><span className="caption-key">SPACE</span> pause <span className="caption-key">R</span> reset <span className="caption-key">D</span> 3D</span></div>
-          <div className="transport-bar">
+          <div className="transport-bar" data-history-revision={historyRevision}>
             <div className="transport-left">
               <button className="transport-play" onClick={() => setIsRunning((value) => !value)} aria-label={isRunning ? 'Pause simulation' : 'Play simulation'}>{isRunning ? <Icon name="pause" size={18} /> : <Icon name="play" size={18} />}</button>
-              <button className="transport-reset" onClick={resetScene}><Icon name="reset" size={15} /> RESET SCENE</button>
+              <button className="frame-button" onClick={stepFrame} disabled={isRunning} aria-label="Advance one frame" title="Advance one frame while paused"><Icon name="step" size={14} /> FRAME</button>
+              <button className="transport-reset" onClick={resetScene} title="Reset current scene"><Icon name="reset" size={15} /> RESET</button>
+              <button className="history-button icon-only" onClick={undoScene} disabled={!canUndo} aria-label="Undo last field edit" title="Undo last field edit (Command/Ctrl+Z)"><Icon name="undo" size={14} /></button>
+              <button className="history-button icon-only" onClick={redoScene} disabled={!canRedo} aria-label="Redo field edit" title="Redo field edit (Command/Ctrl+Shift+Z)"><Icon name="redo" size={14} /></button>
               <span className="transport-time"><span className="transport-dot" /> T+ {(engineRef.current?.time ?? 0).toFixed(1).padStart(5, '0')}s</span>
             </div>
-            <div className="transport-right"><button className="object-drop-button" onClick={() => addObjectAt(objectKind)}><Icon name={objectKind} size={15} /> DROP {OBJECT_LABELS[objectKind].toUpperCase()}</button><button className="volley-button" onClick={dropBurst}><Icon name="spark" size={15} /> VOLLEY</button><button className="clear-button" onClick={clearObjects}><Icon name="trash" size={15} /> CLEAR OBJECTS</button></div>
+            <div className="transport-right"><button className="object-drop-button" onClick={() => addObjectAt(objectKind)}><Icon name={objectKind} size={15} /> DROP {OBJECT_LABELS[objectKind].toUpperCase()}</button><button className="volley-button" onClick={dropBurst}><Icon name="spark" size={15} /> VOLLEY</button><button className="capture-button" onClick={exportCanvas} aria-label="Export field image" title="Export the current field as a PNG"><Icon name="download" size={14} /> PNG</button><button className="clear-button" onClick={clearObjects}><Icon name="trash" size={15} /> CLEAR</button></div>
           </div>
 
           <section className="panel preset-panel">
@@ -1167,15 +1288,15 @@ export default function App() {
 
           <section className="panel shortcuts-panel">
             <div className="panel-heading"><div><span className="section-index">08</span><h2>Field notes</h2></div><button className="icon-button ghost small" aria-label="Open shortcuts" onClick={() => setShowHelp(true)}><Icon name="chevron" size={15} /></button></div>
-            <div className="shortcut-list"><div><kbd>G</kbd><span>grab a node</span></div><div><kbd>C</kbd><span>cut constraints</span></div><div><kbd>F</kbd><span>focus the field</span></div><div><kbd>1—5</kbd><span>load scenario</span></div></div>
+            <div className="shortcut-list"><div><kbd>G</kbd><span>grab a node</span></div><div><kbd>C</kbd><span>cut constraints</span></div><div><kbd>Z</kbd><span>undo / <kbd>⇧Z</kbd> redo</span></div><div><kbd>F</kbd><span>focus the field</span></div><div><kbd>1—5</kbd><span>load scenario</span></div><div><kbd>FRAME</kbd><span>step while paused</span></div></div>
             <button className="help-link" onClick={() => setShowHelp(true)}><Icon name="help" size={14} /> full control map <Icon name="chevron" size={13} /></button>
           </section>
         </aside>
       </main>
 
-      <footer className="app-footer"><span><span className="footer-mark">✳</span> A tactile experiment by Loomfall Studio</span><span>VER 0.5.0 <span className="footer-separator">•</span> NO BACKEND <span className="footer-separator">•</span> STATIC / LOCAL FIRST</span></footer>
+      <footer className="app-footer"><span><span className="footer-mark">✳</span> A tactile experiment by Loomfall Studio</span><span>VER 0.7.0 <span className="footer-separator">•</span> NO BACKEND <span className="footer-separator">•</span> STATIC / LOCAL FIRST</span></footer>
 
-      {showHelp && <div className="modal-backdrop" role="presentation" onClick={() => setShowHelp(false)}><section className="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)} aria-label="Close help"><Icon name="close" size={18} /></button><span className="eyebrow"><span className="eyebrow-dot" /> CONTROL MAP</span><h2 id="help-title">Make the mesh move.</h2><p>Every tool works directly on the field. Try slow changes first, then introduce force.</p><div className="help-grid"><div><kbd>SPACE</kbd><span>pause / resume</span></div><div><kbd>R</kbd><span>reset current scene</span></div><div><kbd>G</kbd><span>grab cloth or objects</span></div><div><kbd>C</kbd><span>draw a cut path</span></div><div><kbd>P</kbd><span>pin / release a node</span></div><div><kbd>O</kbd><span>drop selected object</span></div><div><kbd>D</kbd><span>toggle 3D depth projection</span></div><div><kbd>F</kbd><span>expand the field</span></div></div><button className="modal-action" onClick={() => { setShowHelp(false); setTool('cut') }}><Icon name="cut" size={16} /> start with a cut</button></section></div>}
+      {showHelp && <div className="modal-backdrop" role="presentation" onClick={() => setShowHelp(false)}><section className="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)} aria-label="Close help"><Icon name="close" size={18} /></button><span className="eyebrow"><span className="eyebrow-dot" /> CONTROL MAP</span><h2 id="help-title">Make the mesh move.</h2><p>Every tool works directly on the field. Try slow changes first, then introduce force.</p><div className="help-grid"><div><kbd>SPACE</kbd><span>pause / resume</span></div><div><kbd>R</kbd><span>reset current scene</span></div><div><kbd>G</kbd><span>grab cloth or objects</span></div><div><kbd>C</kbd><span>draw a cut path</span></div><div><kbd>P</kbd><span>pin / release a node</span></div><div><kbd>O</kbd><span>drop selected object</span></div><div><kbd>D</kbd><span>toggle 3D depth projection</span></div><div><kbd>F</kbd><span>expand the field</span></div><div><kbd>⌘/CTRL Z</kbd><span>undo field edit</span></div><div><kbd>⌘/CTRL ⇧Z</kbd><span>redo field edit</span></div><div><kbd>FRAME</kbd><span>advance one paused frame</span></div></div><button className="modal-action" onClick={() => { setShowHelp(false); setTool('cut') }}><Icon name="cut" size={16} /> start with a cut</button></section></div>}
     </div>
   )
 }

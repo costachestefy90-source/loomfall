@@ -14,6 +14,10 @@ The second polish pass turned the simulation from a one-shot toy into a small ex
 - Replaced the decorative telemetry bars with a live energy history and fixed the object list so drops and removals appear immediately.
 - Added auto-pause on hidden tabs as a small battery and performance courtesy.
 
+The follow-up pass added a bounded scene history for reversible grabs, cuts, pins, clears, drops, and volleys. The transport bar now exposes undo/redo state, and the current canvas can be exported as a PNG for field notes or a fresh banner capture.
+
+The same pass added a paused **FRAME** control. It advances exactly one fixed solver step and creates an undo checkpoint, which makes slow-motion inspection of collisions and tears possible without changing the underlying integrator.
+
 Verification for this pass: `npm run lint`, `npm run build`, and a local-browser interaction check covering volley, focus mode, object persistence, and snapshot capture.
 
 The current visual reference is [`public/loomfall-banner.png`](../public/loomfall-banner.png), a real screenshot of the running laboratory.

@@ -27,6 +27,9 @@ Physics sandboxes are often either opaque demos or intimidating engineering tool
 - Capture up to five run snapshots, review observations in the archive, keep them across refreshes, and export a JSON lab log.
 - Use focus mode to expand the field, with the active experiment carried through responsive resizes.
 - Toggle a live **3D depth projection** (`D`) that turns cloth folds, objects, contacts, and the constraint lattice into a perspective relief without changing the stable 2D solver.
+- Undo and redo field edits with `⌘/Ctrl+Z` and `⌘/Ctrl+Shift+Z`, including grabs, cuts, pins, clears, and object drops.
+- Export the current canvas as a PNG directly from the transport bar for sharing a field state.
+- Pause and advance one solver frame at a time with the `FRAME` control when inspecting a fold or collision.
 - Let the lab auto-pause when its browser tab is hidden to avoid wasting work in the background.
 
 ## Controls
@@ -41,6 +44,9 @@ Physics sandboxes are often either opaque demos or intimidating engineering tool
 | `R` | Reset the current experiment |
 | `F` | Toggle the expanded focus field |
 | `D` | Toggle the 3D depth projection |
+| `⌘/Ctrl+Z` | Undo the last field edit |
+| `⌘/Ctrl+Shift+Z` | Redo a field edit |
+| `FRAME` | Advance one frame while paused |
 | `1`–`5` | Load a scenario preset |
 
 The same actions are available through the tool panel and transport bar, so the lab is usable with a mouse, touch pointer, or keyboard.
