@@ -181,6 +181,39 @@ const resolveObjectCollision = (point: Point, object: SimObject, contacts: Conta
   contacts.push({ x: object.x + nx * objectRadius(object), y: object.y + ny * objectRadius(object), strength: 1 })
 }
 
+const resolveObjectPair = (a: SimObject, b: SimObject, contacts: Contact[]) => {
+  const minimumDistance = objectRadius(a) + objectRadius(b)
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const distance = Math.hypot(dx, dy)
+  if (distance >= minimumDistance) return
+
+  const safeDistance = distance || 0.001
+  const nx = dx / safeDistance
+  const ny = dy / safeDistance
+  const inverseA = 1 / Math.max(a.mass, 0.1)
+  const inverseB = 1 / Math.max(b.mass, 0.1)
+  const totalInverse = inverseA + inverseB
+  const correction = (minimumDistance - safeDistance) / totalInverse
+  a.x -= nx * correction * inverseA
+  a.y -= ny * correction * inverseA
+  b.x += nx * correction * inverseB
+  b.y += ny * correction * inverseB
+
+  const relativeVelocity = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny
+  if (relativeVelocity < 0) {
+    const bounce = Math.min(a.bounce, b.bounce)
+    const impulse = -(1 + bounce) * relativeVelocity / totalInverse
+    a.vx -= impulse * nx * inverseA
+    a.vy -= impulse * ny * inverseA
+    b.vx += impulse * nx * inverseB
+    b.vy += impulse * ny * inverseB
+  }
+  a.hitPulse = Math.max(a.hitPulse, 0.75)
+  b.hitPulse = Math.max(b.hitPulse, 0.75)
+  contacts.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, strength: 0.72 })
+}
+
 export function stepSimulation(
   cloth: Cloth,
   objects: SimObject[],
@@ -232,6 +265,12 @@ export function stepSimulation(
       object.y = cloth.floorY - radius
       object.vy = -Math.abs(object.vy) * object.bounce
       object.vx *= 0.985
+    }
+  }
+
+  for (let first = 0; first < objects.length; first += 1) {
+    for (let second = first + 1; second < objects.length; second += 1) {
+      resolveObjectPair(objects[first], objects[second], contacts)
     }
   }
 
